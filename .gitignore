@@ -5,3 +5,4 @@ src/fine-tuning/__pycache__
 src/fine-tuning/finetune-esm
 src/fine-tuning/venv_esmplusplus
 src/prediction-analysis/pymol-examples
+src/fine-tuning/predictions
