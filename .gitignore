@@ -6,3 +6,6 @@ src/fine-tuning/finetune-esm
 src/fine-tuning/venv_esmplusplus
 src/prediction-analysis/pymol-examples
 src/fine-tuning/predictions
+src/models/__pycache__
+src/models/650M-version/inconsistencies
+src/models/train-models
