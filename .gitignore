@@ -9,3 +9,6 @@ src/fine-tuning/predictions
 src/models/__pycache__
 src/models/650M-version/inconsistencies
 src/models/train-models
+src/models/predict/ground-truth
+src/models/predict/predictions
+src/fine-tuning
