@@ -1,7 +1,6 @@
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
 import csv
 from torch import nn
 from sklearn.utils import class_weight
@@ -171,7 +170,8 @@ def accuracy_fn(y_true, y_pred):
 
 torch.manual_seed(42)
         
-def train(model, optimizer, epochs, batch_size, train_dataset, test_dataset, decision_threshold=DECISION_THRESHOLD):
+def train(model, optimizer, epochs, batch_size, train_dataset, test_dataset, decision_threshold=DECISION_THRESHOLD,
+          save_aucroc_auprc_to=None):
     model = model.to(device)
 
     # Create an optimizer
@@ -209,14 +209,14 @@ def train(model, optimizer, epochs, batch_size, train_dataset, test_dataset, dec
             test_acc = accuracy_fn(y_true=y_test,
                                    y_pred=test_pred)
             
-            fpr, tpr, _ = metrics.roc_curve(y_test.cpu().numpy(), torch.sigmoid(test_logits).cpu().numpy())
+            fpr, tpr, thresholds1 = metrics.roc_curve(y_test.cpu().numpy(), torch.sigmoid(test_logits).cpu().numpy())
             roc_auc = metrics.auc(fpr, tpr)
 
             mcc = metrics.matthews_corrcoef(y_test.cpu().numpy(), test_pred.cpu().numpy())
 
             f1 = metrics.f1_score(y_test.cpu().numpy(), test_pred.cpu().numpy(), average='weighted')
 
-            precision, recall, _ = metrics.precision_recall_curve(y_test.cpu().numpy(), torch.sigmoid(test_logits).cpu().numpy())
+            precision, recall, thresholds2 = metrics.precision_recall_curve(y_test.cpu().numpy(), torch.sigmoid(test_logits).cpu().numpy())
             auprc = metrics.auc(recall, precision)
 
 
@@ -262,3 +262,8 @@ def train(model, optimizer, epochs, batch_size, train_dataset, test_dataset, dec
     plt.ylabel('True Positive Rate')
     plt.xlabel('False Positive Rate')
     plt.show()
+
+    if save_aucroc_auprc_to:
+        np.savez(f'/home/skrhakv/cryptic-nn/src/models/auc-auprc/data/{save_aucroc_auprc_to}-rocauc.npz', fpr, tpr, thresholds1)
+        np.savez(f'/home/skrhakv/cryptic-nn/src/models/auc-auprc/data/{save_aucroc_auprc_to}-auprc.npz', precision, recall, thresholds2)
+
