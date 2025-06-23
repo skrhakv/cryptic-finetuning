@@ -12,3 +12,5 @@ src/models/train-models
 src/models/predict/ground-truth
 src/models/predict/predictions
 src/fine-tuning
+src/models/finetuned-ESM2-650M.tar.gz
+src/models/650M-version/finetuned-model-650M.pt
