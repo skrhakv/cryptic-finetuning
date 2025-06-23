@@ -1,11 +1,5 @@
 datasets/
 data/
-src/fine-tuning/esmc-venv
-src/fine-tuning/__pycache__
-src/fine-tuning/finetune-esm
-src/fine-tuning/venv_esmplusplus
-src/prediction-analysis/pymol-examples
-src/fine-tuning/predictions
 src/__pycache__
 src/650M-version/inconsistencies
 src/train-models
@@ -14,3 +8,4 @@ src/predict/predictions
 src/fine-tuning
 src/finetuned-ESM2-650M.tar.gz
 src/650M-version/finetuned-model-650M.pt
+final-data/
