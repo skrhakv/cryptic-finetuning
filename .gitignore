@@ -10,3 +10,4 @@ src/finetuned-ESM2-650M.tar.gz
 src/650M-version/finetuned-model-650M.pt
 final-data/
 src/trained-models/
+src/IDPs/
