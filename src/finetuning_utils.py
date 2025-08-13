@@ -15,6 +15,8 @@ OUTPUT_SIZE = 1
 MAX_LENGTH = 1024
 LABEL_PAD_TOKEN_ID = -100
 
+LIGYSIS_OVERLAPPING_SEQUENCES = {'P28907', 'P40925', 'Q8TDX7', 'P62068', 'P13929', 'P18669', 'P22303', 'P23141', 'P46597', 'P68106', 'Q86WA6', 'P13686', 'P00480', 'O75530', 'P50053', 'Q13303', 'O75317', 'P15328', 'P08236', 'Q9H477', 'P52895', 'P09936', 'P14207', 'P30613', 'P14618', 'P42330', 'P17900', 'Q04828', 'P12004', 'Q8IVL8', 'Q7L266', 'P51857', 'Q9BUT1', 'P30838', 'O43924', 'P09104', 'P07864', 'Q9BYC5', 'P06733', 'P15121', 'P17516', 'P40926', 'O60218', 'P00338', 'P07738', 'P07195'}
+
 # MODEL_NAME = "facebook/esm2_t6_8M_UR50D"
 # MODEL_NAME = "facebook/esm2_t33_650M_UR50D"
 MODEL_NAME = 'facebook/esm2_t36_3B_UR50D'
@@ -110,6 +112,9 @@ def process_sequence_dataset(annotation_path, tokenizer, distances_scaler=None, 
                 protein_id = row[0].lower() + row[1]
             else:
                 protein_id = row[0]
+            
+            if protein_id in LIGYSIS_OVERLAPPING_SEQUENCES:
+                continue
             sequence = row[4]
             # max sequence length of ESM2
             if len(sequence) > MAX_LENGTH: continue 
@@ -198,6 +203,8 @@ def collate_fn(batch, tokenizer):
         label_names.append('distances')
     if "plDDTs" in batch[0].keys():
         label_names.append('plDDTs')
+    if "ids" in batch[0].keys():
+        label_names.append('ids')
 
     labels = {label_name: [feature[label_name] for feature in batch] for label_name in label_names}
     no_labels_features = [{k: v for k, v in feature.items() if k not in label_names} for feature in batch]
@@ -212,5 +219,6 @@ def collate_fn(batch, tokenizer):
 
     for label_name in label_names:
         batch[label_name] = [[LABEL_PAD_TOKEN_ID] + list(label) + [LABEL_PAD_TOKEN_ID] * (sequence_length - len(label)-1) for label in labels[label_name]]
-        batch[label_name] = torch.tensor(batch[label_name]).to(device)
+        if label_name != 'ids':
+            batch[label_name] = torch.tensor(batch[label_name]).to(device)
     return batch
