@@ -15,6 +15,7 @@ OUTPUT_SIZE = 1
 MAX_LENGTH = 1024
 LABEL_PAD_TOKEN_ID = -100
 
+NUMBER_OF_MODES = 15
 LIGYSIS_OVERLAPPING_SEQUENCES = {'P28907', 'P40925', 'Q8TDX7', 'P62068', 'P13929', 'P18669', 'P22303', 'P23141', 'P46597', 'P68106', 'Q86WA6', 'P13686', 'P00480', 'O75530', 'P50053', 'Q13303', 'O75317', 'P15328', 'P08236', 'Q9H477', 'P52895', 'P09936', 'P14207', 'P30613', 'P14618', 'P42330', 'P17900', 'Q04828', 'P12004', 'Q8IVL8', 'Q7L266', 'P51857', 'Q9BUT1', 'P30838', 'O43924', 'P09104', 'P07864', 'Q9BYC5', 'P06733', 'P15121', 'P17516', 'P40926', 'O60218', 'P00338', 'P07738', 'P07195'}
 
 # MODEL_NAME = "facebook/esm2_t6_8M_UR50D"
@@ -27,6 +28,50 @@ device
 OUT_CHANNELS = 128
 KERNEL_SIZE = 15
 NUM_LAYERS = 3
+
+
+class FinetunedEsmModelWithCnn(nn.Module):
+    def __init__(self, esm_model: str, in_channels:int=1) -> None:
+        super().__init__()
+        self.llm = EsmModel.from_pretrained(esm_model) #, torch_dtype=torch.bfloat16)
+
+        conv_layers = [nn.Conv1d(in_channels, OUT_CHANNELS, KERNEL_SIZE, padding=KERNEL_SIZE // 2), 
+                      nn.ReLU()]
+        for i in range(NUM_LAYERS - 1):
+            conv_layers.append(nn.Conv1d(OUT_CHANNELS, OUT_CHANNELS, KERNEL_SIZE, padding=KERNEL_SIZE // 2))
+            conv_layers.append(nn.ReLU())
+            # conv_layers.append(nn.BatchNorm1d(OUT_CHANNELS))
+        self.pLDDT_conv = nn.Sequential(*conv_layers)
+
+        self.dropout = nn.Dropout(DROPOUT)
+
+        input_size = self.llm.config.hidden_size + OUT_CHANNELS
+        self.classifier = nn.Linear(input_size, OUTPUT_SIZE) # , dtype=torch.bfloat16)
+
+    def forward(self, batch: dict[str, np.ndarray]) -> torch.Tensor:
+        input_ids, attention_mask = batch["input_ids"], batch["attention_mask"]
+        if 'plDDTs' in batch:
+            pLDDT = batch["plDDTs"].half()
+        else:
+            pLDDT = []
+            for i in range(NUMBER_OF_MODES):
+                pLDDT.append(batch[f'nma_mode_{i+1}'].half())
+            pLDDT = torch.stack(pLDDT, dim=2)  #
+
+        token_embeddings = self.llm(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+        token_embeddings = self.dropout(token_embeddings)
+        
+        pLDDT = pLDDT.reshape(token_embeddings.shape[0], -1, token_embeddings.shape[1])
+        processed_pLDDT = self.pLDDT_conv(pLDDT)
+        processed_pLDDT = processed_pLDDT.reshape(token_embeddings.shape[0], token_embeddings.shape[1], OUT_CHANNELS)
+        assert processed_pLDDT.shape[0] == token_embeddings.shape[0]
+        assert processed_pLDDT.shape[1] == token_embeddings.shape[1]
+
+        token_embeddings = torch.cat((token_embeddings, processed_pLDDT), dim=2)
+
+        assert processed_pLDDT.shape[1] == token_embeddings.shape[1]
+        return self.classifier(token_embeddings)
+    
 
 class MultitaskFinetunedEsmModelWithCnn(nn.Module):
     def __init__(self, esm_model: str) -> None:
@@ -97,12 +142,13 @@ class FinetunedEsmModel(nn.Module):
         return self.classifier(token_embeddings)
 
 def process_sequence_dataset(annotation_path, tokenizer, distances_scaler=None, plDDT_scaler=None, distances_path=None, 
-                               plDDT_path=None, uniprot_ids=False, load_ids=False):
+                               plDDT_path=None, uniprot_ids=False, load_ids=False, nma_path=None, nma_scaler=None):
     sequences = []
     labels = []
     distances = []
     plDDTs = []
     ids = []
+    nma = [[] for _ in range(NUMBER_OF_MODES)]
 
     with open(annotation_path) as f:
         reader = csv.reader(f, delimiter=";")
@@ -132,7 +178,7 @@ def process_sequence_dataset(annotation_path, tokenizer, distances_scaler=None, 
     
                 if len(distance) != len(sequence): 
                     print(f'{protein_id} doesn\'t match. Skipping ...')
-                    break
+                    continue
                 
                 # scale the distance
                 distance = distances_scaler.transform(distance.reshape(-1, 1)).reshape(1, -1)[0]
@@ -146,18 +192,30 @@ def process_sequence_dataset(annotation_path, tokenizer, distances_scaler=None, 
     
                 if len(plDDT) != len(sequence): 
                     print(f'{protein_id} doesn\'t match. Skipping ...')
-                    break
+                    continue
                 
                 # scale the distance
                 plDDT = plDDT_scaler.transform(plDDT.reshape(-1, 1)).reshape(1, -1)[0]
                 plDDTs.append(plDDT)
 
+            if nma_path:
+                assert nma_scaler is not None
+
+                nma_fluctuations = np.load(f'{nma_path}/{protein_id}.npy')[6:(6 + NUMBER_OF_MODES)] # take first N non-trivial modes
+
+                if nma_fluctuations.shape[1] != len(sequence):
+                    print(f'{protein_id} doesn\'t match: {nma_fluctuations.shape[1]} vs {len(sequence)}. Skipping ...')
+                    continue
+
+                nma_fluctuations = nma_fluctuations.transpose()
+                nma_fluctuations = nma_scaler.transform(nma_fluctuations)
+                for i in range(NUMBER_OF_MODES): 
+                    nma[i].append(nma_fluctuations[:, i])
+                
             ids.append([protein_id for _ in range(len(sequence))])
             sequences.append(sequence)
             labels.append(label)
-
     train_tokenized = tokenizer(sequences)
-    
     dataset = Dataset.from_dict(train_tokenized)
     dataset = dataset.add_column("labels", labels)
     if load_ids:
@@ -166,11 +224,14 @@ def process_sequence_dataset(annotation_path, tokenizer, distances_scaler=None, 
         dataset = dataset.add_column("distances", distances)
     if len(plDDTs) > 0:
         dataset = dataset.add_column("plDDTs", plDDTs)
+    if len(nma) > 0:
+        for i in range(NUMBER_OF_MODES):
+            dataset = dataset.add_column(f'nma_mode_{i+1}', nma[i])
     
     return dataset
 
 
-def train_scaler(annotation_path, distances_path=None, plDDT_path=None, uniprot_ids=False):
+def train_scaler(annotation_path, distances_path=None, plDDT_path=None, uniprot_ids=False, nma_path=None):
     values = []
 
     with open(annotation_path) as f:
@@ -190,11 +251,19 @@ def train_scaler(annotation_path, distances_path=None, plDDT_path=None, uniprot_
                 plDDT = np.load(f'{plDDT_path}/{protein_id}.npy')
                 plDDT[plDDT == -100.0] = 0.75
                 values.append(plDDT)
+            elif nma_path:
+                nma_values = np.load(f'{nma_path}/{protein_id}.npy')
+                nma_values = nma_values[6:(6 + NUMBER_OF_MODES)] # take first N non-trivial modes
+                nma_values = nma_values.transpose()
+                values.append(nma_values)     
             else:
-                raise ValueError("Either distances_path or plDDT_path must be provided.")
+                raise ValueError("Either distances_path, plDDT_path, or nma_path must be provided.")
 
     scaler = MinMaxScaler()
-    scaler.fit(np.concatenate(values).reshape(-1, 1))
+    if nma_path:
+        scaler.fit(np.concatenate(values).reshape(-1, NUMBER_OF_MODES))
+    else:
+        scaler.fit(np.concatenate(values).reshape(-1, 1))
     return scaler
 
 def collate_fn(batch, tokenizer):
@@ -205,7 +274,9 @@ def collate_fn(batch, tokenizer):
         label_names.append('plDDTs')
     if "ids" in batch[0].keys():
         label_names.append('ids')
-
+    for i in range(NUMBER_OF_MODES):
+        if f"nma_mode_{i+1}" in batch[0].keys():
+            label_names.append(f"nma_mode_{i+1}")
     labels = {label_name: [feature[label_name] for feature in batch] for label_name in label_names}
     no_labels_features = [{k: v for k, v in feature.items() if k not in label_names} for feature in batch]
 
