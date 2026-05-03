@@ -224,7 +224,7 @@ def process_sequence_dataset(annotation_path, tokenizer, distances_scaler=None, 
         dataset = dataset.add_column("distances", distances)
     if len(plDDTs) > 0:
         dataset = dataset.add_column("plDDTs", plDDTs)
-    if len(nma) > 0:
+    if len(nma[0]) > 0:
         for i in range(NUMBER_OF_MODES):
             dataset = dataset.add_column(f'nma_mode_{i+1}', nma[i])
     
