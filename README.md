@@ -10,7 +10,7 @@ Binding sites that exhibit significant conformational changes are often referred
 ## About
 This work extends the [CryptoBench study](academic.oup.com/bioinformatics/article/41/1/btae745/7927823). We examine various approaches for training on the CryptoBench dataset, which includes over 1,000 protein structures annotated with cryptic binding sites. We begin with simple transfer learning approach and incrementally add steps to the model to evaluate their impact compared to the baseline.
 
-To replicate our results or apply our methods to your own data, download the necessary files from [this link](https://owncloud.cesnet.cz/index.php/s/f3YEUJYyOrTZa12).
+To replicate our results or apply our methods to your own data, download the necessary files from [this link](https://owncloud.cesnet.cz/index.php/s/w29gFI3GEzCNlKc).
 
 ## Contact us 
 Have questions or suggestions? Feel free to open [an issue!](https://github.com/skrhakv/cryptic-finetuning/issues)
